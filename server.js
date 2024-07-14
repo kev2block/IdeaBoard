@@ -5,13 +5,19 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
-const socketIo = require('socket.io');
+const { Server } = require("socket.io");
 
+// Express app setup
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 3000;
+
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_CONNECTION_STRING, {
+const mongoUri = process.env.MONGODB_URI || 'YOUR_MONGODB_CONNECTION_STRING';
+mongoose.connect(mongoUri, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(() => {
@@ -26,8 +32,8 @@ const ideaSchema = new mongoose.Schema({
   description: String,
   category: String,
   list: [String],
-  createdAt: Date,
-  updatedAt: Date
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 const fieldSchema = new mongoose.Schema({
@@ -36,17 +42,14 @@ const fieldSchema = new mongoose.Schema({
   content: String,
   extendedText: String,
   fontSize: String,
-  color: String
+  color: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 // Define Models
-const Idea = mongoose.model('Idea', ideaSchema);
-const Field = mongoose.model('Field', fieldSchema);
-
-// Middleware
-app.use(bodyParser.json());
-app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+const Idea = mongoose.models.Idea || mongoose.model('Idea', ideaSchema);
+const Field = mongoose.models.Field || mongoose.model('Field', fieldSchema);
 
 // Routes for ideas
 app.get('/ideas', async (req, res) => {
@@ -55,19 +58,18 @@ app.get('/ideas', async (req, res) => {
 });
 
 app.post('/ideas', async (req, res) => {
-  const newIdea = new Idea({
-    ...req.body,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  });
+  const newIdea = new Idea(req.body);
   await newIdea.save();
-  io.emit('ideaCreated', newIdea);
   res.status(201).json(newIdea);
 });
 
+app.put('/ideas/:id', async (req, res) => {
+  const updatedIdea = await Idea.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  res.json(updatedIdea);
+});
+
 app.delete('/ideas/:id', async (req, res) => {
-  const deletedIdea = await Idea.findByIdAndDelete(req.params.id);
-  io.emit('ideaDeleted', deletedIdea._id);
+  await Idea.findByIdAndDelete(req.params.id);
   res.status(204).send();
 });
 
@@ -80,13 +82,16 @@ app.get('/fields', async (req, res) => {
 app.post('/fields', async (req, res) => {
   const newField = new Field(req.body);
   await newField.save();
-  io.emit('fieldCreated', newField);
   res.status(201).json(newField);
 });
 
+app.put('/fields/:id', async (req, res) => {
+  const updatedField = await Field.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  res.json(updatedField);
+});
+
 app.delete('/fields/:id', async (req, res) => {
-  const deletedField = await Field.findByIdAndDelete(req.params.id);
-  io.emit('fieldDeleted', deletedField._id);
+  await Field.findByIdAndDelete(req.params.id);
   res.status(204).send();
 });
 
@@ -101,18 +106,44 @@ const options = {
   cert: fs.readFileSync('cert.pem')
 };
 
-// Start the server with HTTPS and Socket.IO
+// Create HTTPS server
 const server = https.createServer(options, app);
-const io = socketIo(server);
 
+// Set up socket.io
+const io = new Server(server);
 io.on('connection', (socket) => {
   console.log('New client connected');
-  
+
+  socket.on('new-idea', (idea) => {
+    io.emit('new-idea', idea);
+  });
+
+  socket.on('update-idea', (idea) => {
+    io.emit('update-idea', idea);
+  });
+
+  socket.on('delete-idea', (id) => {
+    io.emit('delete-idea', id);
+  });
+
+  socket.on('new-field', (field) => {
+    io.emit('new-field', field);
+  });
+
+  socket.on('update-field', (field) => {
+    io.emit('update-field', field);
+  });
+
+  socket.on('delete-field', (id) => {
+    io.emit('delete-field', id);
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected');
   });
 });
 
+// Start the server
 server.listen(port, () => {
   console.log(`Server is running at https://localhost:${port}`);
 });
