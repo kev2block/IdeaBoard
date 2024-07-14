@@ -3,8 +3,13 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
+const socketIo = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
 const port = process.env.PORT || 8080;
 
 // Ersetzen Sie 'YOUR_MONGODB_CONNECTION_STRING' durch Ihren tatsächlichen Verbindungsstring
@@ -60,11 +65,13 @@ app.post('/ideas', async (req, res) => {
     updatedAt: new Date()
   });
   await newIdea.save();
+  io.emit('newIdea', newIdea);  // Emit new idea event to all connected clients
   res.status(201).json(newIdea);
 });
 
 app.delete('/ideas/:id', async (req, res) => {
   await Idea.findByIdAndDelete(req.params.id);
+  io.emit('deleteIdea', req.params.id);  // Emit delete idea event to all connected clients
   res.status(204).send();
 });
 
@@ -77,11 +84,13 @@ app.get('/fields', async (req, res) => {
 app.post('/fields', async (req, res) => {
   const newField = new Field(req.body);
   await newField.save();
+  io.emit('newField', newField);  // Emit new field event to all connected clients
   res.status(201).json(newField);
 });
 
 app.delete('/fields/:id', async (req, res) => {
   await Field.findByIdAndDelete(req.params.id);
+  io.emit('deleteField', req.params.id);  // Emit delete field event to all connected clients
   res.status(204).send();
 });
 
@@ -91,6 +100,14 @@ app.get('/', (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+});
+
+// Handle socket.io connections
+io.on('connection', (socket) => {
+  console.log('A user connected');
+  socket.on('disconnect', () => {
+    console.log('User disconnected');
+  });
 });
