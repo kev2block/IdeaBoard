@@ -5,18 +5,18 @@ const cors = require('cors');
 const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
+const dotenv = require('dotenv');
 
-// Express app setup
+dotenv.config();
+
 const app = express();
-const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+const io = new Server(server);
 
-app.use(bodyParser.json());
-app.use(cors());
-app.use(express.static(path.join(__dirname, 'public')));
+const port = process.env.PORT || 8080;
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard';
-mongoose.connect(mongoUri, {
+mongoose.connect(process.env.MONGODB_CONNECTION_STRING, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(() => {
@@ -31,24 +31,28 @@ const ideaSchema = new mongoose.Schema({
   description: String,
   category: String,
   list: [String],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  createdAt: Date,
+  updatedAt: Date
 });
 
 const fieldSchema = new mongoose.Schema({
+  id: String,
   left: String,
   top: String,
   content: String,
   extendedText: String,
   fontSize: String,
-  color: String,
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  color: String
 });
 
 // Define Models
-const Idea = mongoose.models.Idea || mongoose.model('Idea', ideaSchema);
-const Field = mongoose.models.Field || mongoose.model('Field', fieldSchema);
+const Idea = mongoose.model('Idea', ideaSchema);
+const Field = mongoose.model('Field', fieldSchema);
+
+// Middleware
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes for ideas
 app.get('/ideas', async (req, res) => {
@@ -60,19 +64,13 @@ app.post('/ideas', async (req, res) => {
   const newIdea = new Idea(req.body);
   await newIdea.save();
   res.status(201).json(newIdea);
-  io.emit('new-idea', newIdea); // Emit new idea event
-});
-
-app.put('/ideas/:id', async (req, res) => {
-  const updatedIdea = await Idea.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  res.json(updatedIdea);
-  io.emit('update-idea', updatedIdea); // Emit update idea event
+  io.emit('newIdea', newIdea);
 });
 
 app.delete('/ideas/:id', async (req, res) => {
   await Idea.findByIdAndDelete(req.params.id);
   res.status(204).send();
-  io.emit('delete-idea', req.params.id); // Emit delete idea event
+  io.emit('deleteIdea', req.params.id);
 });
 
 // Routes for fields
@@ -85,37 +83,18 @@ app.post('/fields', async (req, res) => {
   const newField = new Field(req.body);
   await newField.save();
   res.status(201).json(newField);
-  io.emit('new-field', newField); // Emit new field event
-});
-
-app.put('/fields/:id', async (req, res) => {
-  const updatedField = await Field.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  res.json(updatedField);
-  io.emit('update-field', updatedField); // Emit update field event
+  io.emit('newField', newField);
 });
 
 app.delete('/fields/:id', async (req, res) => {
   await Field.findByIdAndDelete(req.params.id);
   res.status(204).send();
-  io.emit('delete-field', req.params.id); // Emit delete field event
+  io.emit('deleteField', req.params.id);
 });
 
 // Serve the index.html file
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Create HTTP server
-const server = http.createServer(app);
-
-// Set up socket.io
-const io = new Server(server);
-io.on('connection', (socket) => {
-  console.log('New client connected');
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
 });
 
 // Start the server
