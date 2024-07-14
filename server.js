@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const { Server } = require("socket.io");
+const http = require('http');
+const { Server } = require('socket.io');
 
 // Express app setup
 const app = express();
@@ -59,16 +60,19 @@ app.post('/ideas', async (req, res) => {
   const newIdea = new Idea(req.body);
   await newIdea.save();
   res.status(201).json(newIdea);
+  io.emit('new-idea', newIdea); // Emit new idea event
 });
 
 app.put('/ideas/:id', async (req, res) => {
   const updatedIdea = await Idea.findByIdAndUpdate(req.params.id, req.body, { new: true });
   res.json(updatedIdea);
+  io.emit('update-idea', updatedIdea); // Emit update idea event
 });
 
 app.delete('/ideas/:id', async (req, res) => {
   await Idea.findByIdAndDelete(req.params.id);
   res.status(204).send();
+  io.emit('delete-idea', req.params.id); // Emit delete idea event
 });
 
 // Routes for fields
@@ -81,16 +85,19 @@ app.post('/fields', async (req, res) => {
   const newField = new Field(req.body);
   await newField.save();
   res.status(201).json(newField);
+  io.emit('new-field', newField); // Emit new field event
 });
 
 app.put('/fields/:id', async (req, res) => {
   const updatedField = await Field.findByIdAndUpdate(req.params.id, req.body, { new: true });
   res.json(updatedField);
+  io.emit('update-field', updatedField); // Emit update field event
 });
 
 app.delete('/fields/:id', async (req, res) => {
   await Field.findByIdAndDelete(req.params.id);
   res.status(204).send();
+  io.emit('delete-field', req.params.id); // Emit delete field event
 });
 
 // Serve the index.html file
@@ -99,40 +106,19 @@ app.get('/', (req, res) => {
 });
 
 // Create HTTP server
-const server = app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+const server = http.createServer(app);
 
 // Set up socket.io
 const io = new Server(server);
 io.on('connection', (socket) => {
   console.log('New client connected');
 
-  socket.on('new-idea', (idea) => {
-    io.emit('new-idea', idea);
-  });
-
-  socket.on('update-idea', (idea) => {
-    io.emit('update-idea', idea);
-  });
-
-  socket.on('delete-idea', (id) => {
-    io.emit('delete-idea', id);
-  });
-
-  socket.on('new-field', (field) => {
-    io.emit('new-field', field);
-  });
-
-  socket.on('update-field', (field) => {
-    io.emit('update-field', field);
-  });
-
-  socket.on('delete-field', (id) => {
-    io.emit('delete-field', id);
-  });
-
   socket.on('disconnect', () => {
     console.log('Client disconnected');
   });
+});
+
+// Start the server
+server.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
