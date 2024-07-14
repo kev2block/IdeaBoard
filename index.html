@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsPlumb/2.15.6/js/jsplumb.min.js"></script>
 </head>
 <body>
-    <header id="header" class="hidden">
+    <header id="header">
         <h1>Game Dev Idea Board</h1>
         <nav>
             <button id="newIdeaBtn" class="btn"><i class="fas fa-plus"></i> New Idea</button>
@@ -26,7 +26,7 @@
         </nav>
     </header>
 
-    <main id="mainContent" class="hidden">
+    <main id="mainContent">
         <div id="ideaBoard"></div>
 
         <div id="whiteboard" class="hidden">
@@ -42,10 +42,6 @@
             <div id="whiteboardCanvas"></div>
         </div>
     </main>
-
-    <div id="loginSection">
-        <button id="loginBtn" class="btn"><i class="fas fa-sign-in-alt"></i> Login with Twitch</button>
-    </div>
 
     <div id="modal" class="modal">
         <div class="modal-content">
@@ -66,27 +62,6 @@
         </div>
     </div>
 
-    <script>
-        async function checkLogin() {
-            try {
-                const response = await fetch('/check-login');
-                if (response.ok) {
-                    const user = await response.text();
-                    document.getElementById('loginSection').style.display = 'none';
-                    document.getElementById('header').classList.remove('hidden');
-                    document.getElementById('mainContent').classList.remove('hidden');
-                } else {
-                    document.getElementById('loginBtn').addEventListener('click', () => {
-                        window.location.href = '/login';
-                    });
-                }
-            } catch (error) {
-                console.error('Failed to fetch', error);
-            }
-        }
-
-        checkLogin();
-    </script>
     <script src="script.js"></script>
 </body>
 </html>
