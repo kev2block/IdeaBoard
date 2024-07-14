@@ -9,27 +9,26 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
-const port = 8080;
+const port = process.env.PORT || 3000;
 
 const clientId = process.env.TWITCH_CLIENT_ID;
 const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 const redirectUri = process.env.REDIRECT_URI;
 const allowedUsers = process.env.ALLOWED_USERS.split(',');
 
-const options = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
-};
-
 app.use(cookieParser());
+<<<<<<< HEAD
 app.use(express.static(path.join(__dirname)));
+=======
+app.use(express.static(path.join(__dirname, '..')));
+>>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
 
-app.get('/login', (req, res) => {
+app.get('/api/login', (req, res) => {
   const twitchAuthUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=user:read:email`;
   res.redirect(twitchAuthUrl);
 });
 
-app.get('/callback', async (req, res) => {
+app.get('/api/callback', async (req, res) => {
   const code = req.query.code;
 
   try {
@@ -65,7 +64,7 @@ app.get('/callback', async (req, res) => {
   }
 });
 
-app.get('/check-login', (req, res) => {
+app.get('/api/check-login', (req, res) => {
   const user = req.cookies.twitch_user;
   if (user && allowedUsers.includes(user)) {
     res.send(user);
@@ -75,9 +74,13 @@ app.get('/check-login', (req, res) => {
 });
 
 app.get('/', (req, res) => {
+<<<<<<< HEAD
   res.sendFile(path.join(__dirname, 'index.html'));
+=======
+  res.sendFile(path.join(__dirname, '..', 'index.html'));
+>>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
 });
 
-https.createServer(options, app).listen(port, () => {
-  console.log(`Server is running at https://localhost:${port}`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
