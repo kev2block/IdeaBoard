@@ -1,84 +1,74 @@
-const fs = require('fs');
-const https = require('https');
 const express = require('express');
-const axios = require('axios');
-const cookieParser = require('cookie-parser');
-const path = require('path');
-const dotenv = require('dotenv');
-
-dotenv.config();
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080;
 
-const clientId = process.env.TWITCH_CLIENT_ID;
-const clientSecret = process.env.TWITCH_CLIENT_SECRET;
-const redirectUri = process.env.REDIRECT_URI;
-const allowedUsers = process.env.ALLOWED_USERS.split(',');
-
-app.use(cookieParser());
-<<<<<<< HEAD
-app.use(express.static(path.join(__dirname)));
-=======
-app.use(express.static(path.join(__dirname, '..')));
->>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
-
-app.get('/api/login', (req, res) => {
-  const twitchAuthUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=user:read:email`;
-  res.redirect(twitchAuthUrl);
+mongoose.connect('YOUR_MONGODB_CONNECTION_STRING', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
 });
 
-app.get('/api/callback', async (req, res) => {
-  const code = req.query.code;
-
-  try {
-    const tokenResponse = await axios.post('https://id.twitch.tv/oauth2/token', null, {
-      params: {
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: code,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri
-      }
-    });
-
-    const accessToken = tokenResponse.data.access_token;
-
-    const userResponse = await axios.get('https://api.twitch.tv/helix/users', {
-      headers: {
-        'Client-ID': clientId,
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    const user = userResponse.data.data[0];
-
-    if (allowedUsers.includes(user.login)) {
-      res.cookie('twitch_user', user.login, { maxAge: 900000, httpOnly: true });
-      res.redirect('/');
-    } else {
-      res.send('Access denied');
-    }
-  } catch (error) {
-    res.send('Error during authentication');
-  }
+const ideaSchema = new mongoose.Schema({
+  title: String,
+  description: String,
+  category: String,
+  list: [String]
 });
 
-app.get('/api/check-login', (req, res) => {
-  const user = req.cookies.twitch_user;
-  if (user && allowedUsers.includes(user)) {
-    res.send(user);
-  } else {
-    res.status(403).send('Forbidden');
-  }
+const fieldSchema = new mongoose.Schema({
+  left: String,
+  top: String,
+  content: String,
+  extendedText: String,
+  fontSize: String,
+  color: String
 });
 
-app.get('/', (req, res) => {
-<<<<<<< HEAD
-  res.sendFile(path.join(__dirname, 'index.html'));
-=======
-  res.sendFile(path.join(__dirname, '..', 'index.html'));
->>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
+const Idea = mongoose.model('Idea', ideaSchema);
+const Field = mongoose.model('Field', fieldSchema);
+
+app.use(bodyParser.json());
+app.use(cors());
+
+// Get all ideas
+app.get('/ideas', async (req, res) => {
+  const ideas = await Idea.find();
+  res.json(ideas);
+});
+
+// Create a new idea
+app.post('/ideas', async (req, res) => {
+  const newIdea = new Idea(req.body);
+  await newIdea.save();
+  res.status(201).json(newIdea);
+});
+
+// Delete an idea
+app.delete('/ideas/:id', async (req, res) => {
+  await Idea.findByIdAndDelete(req.params.id);
+  res.status(204).send();
+});
+
+// Get all fields
+app.get('/fields', async (req, res) => {
+  const fields = await Field.find();
+  res.json(fields);
+});
+
+// Create a new field
+app.post('/fields', async (req, res) => {
+  const newField = new Field(req.body);
+  await newField.save();
+  res.status(201).json(newField);
+});
+
+// Delete a field
+app.delete('/fields/:id', async (req, res) => {
+  await Field.findByIdAndDelete(req.params.id);
+  res.status(204).send();
 });
 
 app.listen(port, () => {
