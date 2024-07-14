@@ -1,17 +1,15 @@
-// vercel.json
 {
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/login",
-      "destination": "/api/login"
-    },
+      "src": "index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
     {
-      "source": "/callback",
-      "destination": "/api/callback"
-    },
-    {
-      "source": "/check-login",
-      "destination": "/api/check-login"
+      "src": "/(.*)",
+      "dest": "index.js"
     }
   ]
 }
