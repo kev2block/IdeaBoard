@@ -1,5 +1,3 @@
-const fs = require('fs');
-const https = require('https');
 const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
@@ -9,17 +7,12 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const app = express();
-const port = 8080;
+const port = process.env.PORT || 3000;
 
 const clientId = process.env.TWITCH_CLIENT_ID;
 const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 const redirectUri = process.env.REDIRECT_URI;
 const allowedUsers = process.env.ALLOWED_USERS.split(',');
-
-const options = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
-};
 
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname)));
@@ -56,7 +49,7 @@ app.get('/callback', async (req, res) => {
 
     if (allowedUsers.includes(user.login)) {
       res.cookie('twitch_user', user.login, { maxAge: 900000, httpOnly: true });
-      res.redirect('/');
+      res.redirect('https://your-project-name.vercel.app');
     } else {
       res.send('Access denied');
     }
@@ -78,6 +71,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-https.createServer(options, app).listen(port, () => {
-  console.log(`Server is running at https://localhost:${port}`);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
