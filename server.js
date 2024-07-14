@@ -9,10 +9,16 @@ const https = require('https');
 const app = express();
 const port = process.env.PORT || 8080;
 
-// MongoDB connection
-mongoose.connect('YOUR_MONGODB_CONNECTION_STRING', {
+// Ersetzen Sie 'YOUR_MONGODB_CONNECTION_STRING' durch Ihren tatsächlichen Verbindungsstring
+const mongoUri = 'mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard';
+
+mongoose.connect(mongoUri, {
   useNewUrlParser: true,
   useUnifiedTopology: true
+}).then(() => {
+  console.log('Connected to MongoDB');
+}).catch(err => {
+  console.error('Error connecting to MongoDB', err);
 });
 
 // Define Schemas
@@ -20,7 +26,9 @@ const ideaSchema = new mongoose.Schema({
   title: String,
   description: String,
   category: String,
-  list: [String]
+  list: [String],
+  createdAt: Date,
+  updatedAt: Date
 });
 
 const fieldSchema = new mongoose.Schema({
@@ -48,7 +56,11 @@ app.get('/ideas', async (req, res) => {
 });
 
 app.post('/ideas', async (req, res) => {
-  const newIdea = new Idea(req.body);
+  const newIdea = new Idea({
+    ...req.body,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
   await newIdea.save();
   res.status(201).json(newIdea);
 });
