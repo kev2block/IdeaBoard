@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'YOUR_MONGODB_CONNECTION_STRING';
+const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard';
 mongoose.connect(mongoUri, {
   useNewUrlParser: true,
   useUnifiedTopology: true
