@@ -665,4 +665,8 @@ function placeCaretAtEnd(el) {
 
 // Initial render
 renderIdeas();
+<<<<<<< HEAD
 renderFieldsAndConnections();
+=======
+renderFieldsAndConnections();
+>>>>>>> 2d6069ec8756225dc1a4828b74f172059422f649
