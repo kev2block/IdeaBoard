@@ -1,3 +1,6 @@
+// Initialize socket.io client
+const socket = io();
+
 // DOM Elements
 const newIdeaBtn = document.getElementById('newIdeaBtn');
 const searchInput = document.getElementById('searchInput');
@@ -24,9 +27,6 @@ let jsPlumbInstance;
 let editMode = false;
 let editIdeaId = null;
 
-// Initialize Socket.IO
-const socket = io();
-
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     fetchIdeas();
@@ -45,19 +45,22 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-// Syncing logic
+// Socket.io event listeners
 socket.on('new-idea', (idea) => {
     ideas.push(idea);
     renderIdeas();
 });
 
 socket.on('update-idea', (updatedIdea) => {
-    ideas = ideas.map(idea => idea._id === updatedIdea._id ? updatedIdea : idea);
-    renderIdeas();
+    const index = ideas.findIndex((idea) => idea._id === updatedIdea._id);
+    if (index !== -1) {
+        ideas[index] = updatedIdea;
+        renderIdeas();
+    }
 });
 
 socket.on('delete-idea', (id) => {
-    ideas = ideas.filter(idea => idea._id !== id);
+    ideas = ideas.filter((idea) => idea._id !== id);
     renderIdeas();
 });
 
@@ -67,30 +70,31 @@ socket.on('new-field', (field) => {
 });
 
 socket.on('update-field', (updatedField) => {
-    fields = fields.map(field => field._id === updatedField._id ? updatedField : field);
-    renderFieldsAndConnections();
+    const index = fields.findIndex((field) => field._id === updatedField._id);
+    if (index !== -1) {
+        fields[index] = updatedField;
+        renderFieldsAndConnections();
+    }
 });
 
 socket.on('delete-field', (id) => {
-    fields = fields.filter(field => field._id !== id);
+    fields = fields.filter((field) => field._id !== id);
     renderFieldsAndConnections();
 });
 
-// Fetch ideas from server
+// Functions
 async function fetchIdeas() {
     const response = await fetch('/ideas');
     ideas = await response.json();
     renderIdeas();
 }
 
-// Fetch fields from server
 async function fetchFields() {
     const response = await fetch('/fields');
     fields = await response.json();
     renderFieldsAndConnections();
 }
 
-// Functions
 function initializeJsPlumb() {
     jsPlumbInstance = jsPlumb.getInstance({
         Connector: ["Bezier", { curviness: 50 }],
@@ -168,49 +172,41 @@ function outsideClick(e) {
     }
 }
 
-// Modified saveIdea function
 async function saveIdea(e) {
     e.preventDefault();
     const title = document.getElementById('ideaTitle').value;
     const description = document.getElementById('ideaDescription').value;
     const category = document.getElementById('ideaCategory').value;
 
-    const ideaData = {
-        title,
-        description,
-        category,
-        list: []
-    };
-
-    try {
-        let response;
-        if (editMode) {
-            response = await fetch(`/ideas/${editIdeaId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ideaData)
-            });
-        } else {
-            response = await fetch('/ideas', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(ideaData)
-            });
+    if (editMode && editIdeaId !== null) {
+        const response = await fetch(`/ideas/${editIdeaId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title, description, category, updatedAt: new Date().toISOString() })
+        });
+        const updatedIdea = await response.json();
+        const index = ideas.findIndex(idea => idea._id === editIdeaId);
+        if (index !== -1) {
+            ideas[index] = updatedIdea;
+            socket.emit('update-idea', updatedIdea); // Emit update idea event
         }
-
-        const savedIdea = await response.json();
-        if (editMode) {
-            ideas = ideas.map(idea => idea._id === savedIdea._id ? savedIdea : idea);
-            socket.emit('update-idea', savedIdea);
-        } else {
-            ideas.push(savedIdea);
-            socket.emit('new-idea', savedIdea);
-        }
-        renderIdeas();
-        closeModal();
-    } catch (error) {
-        console.error('Error saving idea:', error);
+    } else {
+        const response = await fetch('/ideas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title, description, category, createdAt: new Date().toISOString() })
+        });
+        const newIdea = await response.json();
+        ideas.push(newIdea);
+        socket.emit('new-idea', newIdea); // Emit new idea event
     }
+
+    closeModal();
+    renderIdeas();
 }
 
 function renderIdeas() {
@@ -228,8 +224,8 @@ function renderIdeas() {
             <h3>${idea.title}</h3>
             <p>${idea.description}</p>
             <span class="category">${idea.category}</span>
-            <button onclick="editIdea(${idea._id})" class="btn">Edit</button>
-            <button onclick="deleteIdea(${idea._id})" class="btn">Delete</button>
+            <button onclick="editIdea('${idea._id}')" class="btn">Edit</button>
+            <button onclick="deleteIdea('${idea._id}')" class="btn">Delete</button>
         `;
 
         // Add list functionality
@@ -239,7 +235,7 @@ function renderIdeas() {
             <h4>List</h4>
             <ul id="list-${idea._id}"></ul>
             <input type="text" id="listInput-${idea._id}" placeholder="Add list item">
-            <button onclick="addListItem(${idea._id})" class="btn">Add Item</button>
+            <button onclick="addListItem('${idea._id}')" class="btn">Add Item</button>
         `;
         ideaCard.appendChild(listContainer);
 
@@ -260,7 +256,7 @@ function addListItem(ideaId) {
     if (listItem !== '') {
         const idea = ideas.find(idea => idea._id === ideaId);
         idea.list.push(listItem);
-        updateIdea(idea);
+        localStorage.setItem('ideas', JSON.stringify(ideas));
         addListItemToDOM(ideaId, listItem);
         listInput.value = '';
     }
@@ -284,7 +280,7 @@ function deleteListItem(ideaId, listItem) {
     const idea = ideas.find(idea => idea._id === ideaId);
     if (idea) {
         idea.list = idea.list.filter(item => item !== listItem);
-        updateIdea(idea);
+        localStorage.setItem('ideas', JSON.stringify(ideas));
         renderIdeas();
     }
 }
@@ -296,17 +292,14 @@ function editIdea(id) {
     }
 }
 
-// Modified deleteIdea function
 async function deleteIdea(id) {
     if (confirm('Are you sure you want to delete this idea?')) {
-        try {
-            await fetch(`/ideas/${id}`, { method: 'DELETE' });
-            ideas = ideas.filter(idea => idea._id !== id);
-            renderIdeas();
-            socket.emit('delete-idea', id);
-        } catch (error) {
-            console.error('Error deleting idea:', error);
-        }
+        await fetch(`/ideas/${id}`, {
+            method: 'DELETE'
+        });
+        ideas = ideas.filter(idea => idea._id !== id);
+        socket.emit('delete-idea', id); // Emit delete idea event
+        renderIdeas();
     }
 }
 
@@ -319,9 +312,10 @@ function toggleWhiteboard() {
     }
 }
 
-// Modified addField function
-async function addField() {
-    const fieldData = {
+function addField() {
+    const fieldId = `field-${Date.now()}`;
+    const field = {
+        id: fieldId,
         left: `${Math.random() * (whiteboardCanvas.clientWidth - 200)}px`,
         top: `${Math.random() * (whiteboardCanvas.clientHeight - 150)}px`,
         content: 'Enter text here...',
@@ -330,20 +324,10 @@ async function addField() {
         color: '#000000'
     };
 
-    try {
-        const response = await fetch('/fields', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(fieldData)
-        });
-
-        const newField = await response.json();
-        fields.push(newField);
-        renderField(newField);
-        socket.emit('new-field', newField);
-    } catch (error) {
-        console.error('Error adding field:', error);
-    }
+    fields.push(field);
+    localStorage.setItem('fields', JSON.stringify(fields));
+    renderField(field);
+    socket.emit('new-field', field); // Emit new field event
 }
 
 function createNewField(left, top) {
@@ -359,7 +343,9 @@ function createNewField(left, top) {
     };
 
     fields.push(field);
+    localStorage.setItem('fields', JSON.stringify(fields));
     renderField(field);
+    socket.emit('new-field', field); // Emit new field event
 
     return fieldId;
 }
@@ -367,7 +353,7 @@ function createNewField(left, top) {
 function renderField(field) {
     const fieldElement = document.createElement('div');
     fieldElement.className = 'whiteboard-field';
-    fieldElement.id = field._id;
+    fieldElement.id = field.id;
     fieldElement.style.left = field.left;
     fieldElement.style.top = field.top;
 
@@ -376,7 +362,7 @@ function renderField(field) {
     deleteBtn.innerHTML = '&times;';
     deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        deleteField(field._id);
+        deleteField(field.id);
     });
 
     const imageBtn = document.createElement('button');
@@ -414,7 +400,7 @@ function renderField(field) {
         if (content.innerHTML.trim() === '') {
             content.innerHTML = 'Enter text here...';
         }
-        updateFieldContent(field._id, content.innerHTML);
+        updateFieldContent(field.id, content.innerHTML);
     });
 
     let isDragging = false;
@@ -441,11 +427,11 @@ function renderField(field) {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 if (isDragging) {
-                    const updatedField = fields.find(f => f._id === field._id);
+                    const updatedField = fields.find(f => f.id === field.id);
                     if (updatedField) {
                         updatedField.left = fieldElement.style.left;
                         updatedField.top = fieldElement.style.top;
-                        updateField(updatedField);
+                        localStorage.setItem('fields', JSON.stringify(fields));
                         jsPlumbInstance.repaintEverything(); // Repaint connections
                     }
                 }
@@ -495,11 +481,11 @@ function renderField(field) {
         handle: '.content',
         filter: '.connection-point',
         stop: function(event) {
-            const updatedField = fields.find(f => f._id === field._id);
+            const updatedField = fields.find(f => f.id === field.id);
             if (updatedField) {
                 updatedField.left = fieldElement.style.left;
                 updatedField.top = fieldElement.style.top;
-                updateField(updatedField);
+                localStorage.setItem('fields', JSON.stringify(fields));
                 jsPlumbInstance.repaintEverything(); // Repaint connections
             }
         }
@@ -533,18 +519,14 @@ function renderFieldsAndConnections() {
     });
 }
 
-// Modified deleteField function
-async function deleteField(id) {
-    try {
-        await fetch(`/fields/${id}`, { method: 'DELETE' });
-        jsPlumbInstance.remove(id);
-        fields = fields.filter(field => field._id !== id);
-        connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
-        renderFieldsAndConnections();
-        socket.emit('delete-field', id);
-    } catch (error) {
-        console.error('Error deleting field:', error);
-    }
+function deleteField(id) {
+    jsPlumbInstance.remove(id);
+    fields = fields.filter(field => field.id !== id);
+    connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
+    localStorage.setItem('fields', JSON.stringify(fields));
+    localStorage.setItem('connections', JSON.stringify(connections));
+    jsPlumbInstance.repaintEverything(); // Repaint connections
+    socket.emit('delete-field', id); // Emit delete field event
 }
 
 function addImage(fieldElement) {
@@ -610,7 +592,7 @@ function openTextEditor(fieldElement) {
     const fontSize = textEditor.querySelector('.font-size');
     const saveBtn = textEditor.querySelector('.save-text');
     
-    const field = fields.find(f => f._id === fieldElement.id);
+    const field = fields.find(f => f.id === fieldElement.id);
     textarea.value = field.extendedText || '';
     fontColor.value = field.color;
     fontSize.value = field.fontSize;
@@ -623,18 +605,20 @@ function openTextEditor(fieldElement) {
         fieldElement.querySelector('.content').style.color = fontColor.value;
         fieldElement.querySelector('.content').style.fontSize = fontSize.value;
         
-        updateField(field);
+        localStorage.setItem('fields', JSON.stringify(fields));
         whiteboardCanvas.removeChild(textEditor);
         jsPlumbInstance.repaintEverything(); // Repaint connections
+        socket.emit('update-field', field); // Emit update field event
     });
 }
 
 function updateFieldContent(fieldId, content) {
-    const field = fields.find(f => f._id === fieldId);
+    const field = fields.find(f => f.id === fieldId);
     if (field) {
         field.content = content;
-        updateField(field);
+        localStorage.setItem('fields', JSON.stringify(fields));
         jsPlumbInstance.repaintEverything(); // Repaint connections
+        socket.emit('update-field', field); // Emit update field event
     }
 }
 
@@ -642,7 +626,7 @@ function toggleBackground() {
     whiteboardCanvas.style.backgroundColor = toggleBgBtn.checked ? '#808080' : '#ecf0f1';
 }
 
-// Utility function to place caret at end
+// Utility function to place caret at the end
 function placeCaretAtEnd(el) {
     el.focus();
     if (typeof window.getSelection !== "undefined" && typeof document.createRange !== "undefined") {
@@ -657,32 +641,6 @@ function placeCaretAtEnd(el) {
         textRange.moveToElementText(el);
         textRange.collapse(false);
         textRange.select();
-    }
-}
-
-async function updateIdea(idea) {
-    try {
-        await fetch(`/ideas/${idea._id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(idea)
-        });
-        renderIdeas();
-    } catch (error) {
-        console.error('Error updating idea:', error);
-    }
-}
-
-async function updateField(field) {
-    try {
-        await fetch(`/fields/${field._id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(field)
-        });
-        renderFieldsAndConnections();
-    } catch (error) {
-        console.error('Error updating field:', error);
     }
 }
 
