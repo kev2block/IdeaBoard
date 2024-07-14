@@ -22,11 +22,11 @@ const options = {
 };
 
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname)));
 
 app.get('/login', (req, res) => {
   const twitchAuthUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=user:read:email`;
-  res.redirect(titchAuthUrl);
+  res.redirect(twitchAuthUrl);
 });
 
 app.get('/callback', async (req, res) => {
@@ -75,7 +75,7 @@ app.get('/check-login', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 https.createServer(options, app).listen(port, () => {
