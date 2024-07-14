@@ -579,3 +579,4 @@ function placeCaretAtEnd(el) {
 
 // Initial render
 renderIdeas();
+renderFieldsAndConnections();

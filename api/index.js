@@ -14,15 +14,13 @@ const port = process.env.PORT || 3000;
 const clientId = process.env.TWITCH_CLIENT_ID;
 const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 const redirectUri = process.env.REDIRECT_URI;
-const allowedUsers = process.env.ALLOWED_USERS.split(',');
+const allowedUsers = process.env.ALLOWED_USERS ? process.env.ALLOWED_USERS.split(',') : [];
 
+// Middleware
 app.use(cookieParser());
-<<<<<<< HEAD
-app.use(express.static(path.join(__dirname)));
-=======
-app.use(express.static(path.join(__dirname, '..')));
->>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
+app.use(express.static(path.join(__dirname, 'public')));
 
+// Routes for login and callback
 app.get('/api/login', (req, res) => {
   const twitchAuthUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=user:read:email`;
   res.redirect(twitchAuthUrl);
@@ -73,12 +71,9 @@ app.get('/api/check-login', (req, res) => {
   }
 });
 
+// Serve the index.html file
 app.get('/', (req, res) => {
-<<<<<<< HEAD
-  res.sendFile(path.join(__dirname, 'index.html'));
-=======
-  res.sendFile(path.join(__dirname, '..', 'index.html'));
->>>>>>> 9fe54033353861342b3fc222f9705c869b5f836c
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(port, () => {
