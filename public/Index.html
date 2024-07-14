@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Dev Idea Board</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsPlumb/2.15.6/js/jsplumb.min.js"></script>
+</head>
+<body>
+    <header id="header" class="hidden">
+        <h1>Game Dev Idea Board</h1>
+        <nav>
+            <button id="newIdeaBtn" class="btn"><i class="fas fa-plus"></i> New Idea</button>
+            <button id="boardBtn" class="btn"><i class="fas fa-chalkboard"></i> Board</button>
+            <select id="filterSelect" class="btn">
+                <option value="all">All Categories</option>
+                <option value="gameplay">Gameplay</option>
+                <option value="story">Story</option>
+                <option value="art">Art</option>
+                <option value="sound">Sound</option>
+                <option value="technical">Technical</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Search ideas...">
+        </nav>
+    </header>
+
+    <main id="mainContent" class="hidden">
+        <div id="ideaBoard"></div>
+
+        <div id="whiteboard" class="hidden">
+            <div id="whiteboardControls">
+                <button id="backBtn" class="btn"><i class="fas fa-arrow-left"></i> Back</button>
+                <button id="addFieldBtn" class="btn"><i class="fas fa-plus"></i> Add Field</button>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="toggleBgBtn" class="toggle-input">
+                    <label for="toggleBgBtn" class="toggle-label"></label>
+                </div>
+                <input type="color" id="fieldColorPicker" value="#ffffff">
+            </div>
+            <div id="whiteboardCanvas"></div>
+        </div>
+    </main>
+
+    <div id="loginSection">
+        <button id="loginBtn" class="btn"><i class="fas fa-sign-in-alt"></i> Login with Twitch</button>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">New Idea</h2>
+            <form id="ideaForm">
+                <input type="text" id="ideaTitle" placeholder="Idea Title" required>
+                <textarea id="ideaDescription" placeholder="Idea Description" required></textarea>
+                <select id="ideaCategory">
+                    <option value="gameplay">Gameplay</option>
+                    <option value="story">Story</option>
+                    <option value="art">Art</option>
+                    <option value="sound">Sound</option>
+                    <option value="technical">Technical</option>
+                </select>
+                <button type="submit" class="btn">Save Idea</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        async function checkLogin() {
+            try {
+                const response = await fetch('/check-login');
+                if (response.ok) {
+                    const user = await response.text();
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('header').classList.remove('hidden');
+                    document.getElementById('mainContent').classList.remove('hidden');
+                } else {
+                    document.getElementById('loginBtn').addEventListener('click', () => {
+                        window.location.href = '/login';
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to fetch', error);
+            }
+        }
+
+        checkLogin();
+    </script>
+    <script src="script.js"></script>
+</body>
+</html>
