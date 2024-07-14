@@ -3,8 +3,6 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
-const https = require('https');
 const { Server } = require("socket.io");
 
 // Express app setup
@@ -100,14 +98,10 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// HTTPS options
-const options = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
-};
-
-// Create HTTPS server
-const server = https.createServer(options, app);
+// Create HTTP server
+const server = app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
 
 // Set up socket.io
 const io = new Server(server);
@@ -141,9 +135,4 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected');
   });
-});
-
-// Start the server
-server.listen(port, () => {
-  console.log(`Server is running at https://localhost:${port}`);
 });
