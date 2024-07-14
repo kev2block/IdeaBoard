@@ -45,23 +45,33 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-// Socket.IO event handlers
-socket.on('ideaCreated', (idea) => {
+// Syncing logic
+socket.on('new-idea', (idea) => {
     ideas.push(idea);
     renderIdeas();
 });
 
-socket.on('ideaDeleted', (id) => {
+socket.on('update-idea', (updatedIdea) => {
+    ideas = ideas.map(idea => idea._id === updatedIdea._id ? updatedIdea : idea);
+    renderIdeas();
+});
+
+socket.on('delete-idea', (id) => {
     ideas = ideas.filter(idea => idea._id !== id);
     renderIdeas();
 });
 
-socket.on('fieldCreated', (field) => {
+socket.on('new-field', (field) => {
     fields.push(field);
     renderFieldsAndConnections();
 });
 
-socket.on('fieldDeleted', (id) => {
+socket.on('update-field', (updatedField) => {
+    fields = fields.map(field => field._id === updatedField._id ? updatedField : field);
+    renderFieldsAndConnections();
+});
+
+socket.on('delete-field', (id) => {
     fields = fields.filter(field => field._id !== id);
     renderFieldsAndConnections();
 });
@@ -158,6 +168,7 @@ function outsideClick(e) {
     }
 }
 
+// Modified saveIdea function
 async function saveIdea(e) {
     e.preventDefault();
     const title = document.getElementById('ideaTitle').value;
@@ -168,14 +179,12 @@ async function saveIdea(e) {
         title,
         description,
         category,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
         list: []
     };
 
     try {
         let response;
-        if (editMode && editIdeaId !== null) {
+        if (editMode) {
             response = await fetch(`/ideas/${editIdeaId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -192,8 +201,10 @@ async function saveIdea(e) {
         const savedIdea = await response.json();
         if (editMode) {
             ideas = ideas.map(idea => idea._id === savedIdea._id ? savedIdea : idea);
+            socket.emit('update-idea', savedIdea);
         } else {
             ideas.push(savedIdea);
+            socket.emit('new-idea', savedIdea);
         }
         renderIdeas();
         closeModal();
@@ -285,12 +296,14 @@ function editIdea(id) {
     }
 }
 
+// Modified deleteIdea function
 async function deleteIdea(id) {
     if (confirm('Are you sure you want to delete this idea?')) {
         try {
             await fetch(`/ideas/${id}`, { method: 'DELETE' });
             ideas = ideas.filter(idea => idea._id !== id);
             renderIdeas();
+            socket.emit('delete-idea', id);
         } catch (error) {
             console.error('Error deleting idea:', error);
         }
@@ -306,6 +319,7 @@ function toggleWhiteboard() {
     }
 }
 
+// Modified addField function
 async function addField() {
     const fieldData = {
         left: `${Math.random() * (whiteboardCanvas.clientWidth - 200)}px`,
@@ -326,6 +340,7 @@ async function addField() {
         const newField = await response.json();
         fields.push(newField);
         renderField(newField);
+        socket.emit('new-field', newField);
     } catch (error) {
         console.error('Error adding field:', error);
     }
@@ -518,6 +533,7 @@ function renderFieldsAndConnections() {
     });
 }
 
+// Modified deleteField function
 async function deleteField(id) {
     try {
         await fetch(`/fields/${id}`, { method: 'DELETE' });
@@ -525,6 +541,7 @@ async function deleteField(id) {
         fields = fields.filter(field => field._id !== id);
         connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
         renderFieldsAndConnections();
+        socket.emit('delete-field', id);
     } catch (error) {
         console.error('Error deleting field:', error);
     }
