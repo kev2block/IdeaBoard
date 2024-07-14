@@ -1,6 +1,3 @@
-// Client-side script
-const socket = io();
-
 // DOM Elements
 const newIdeaBtn = document.getElementById('newIdeaBtn');
 const searchInput = document.getElementById('searchInput');
@@ -20,17 +17,22 @@ const backBtn = document.getElementById('backBtn');
 // State
 let ideas = [];
 let fields = [];
-let connections = [];
+let connections = JSON.parse(localStorage.getItem('connections')) || [];
 
 // jsPlumb instance
 let jsPlumbInstance;
 let editMode = false;
 let editIdeaId = null;
 
+// Initialize Socket.IO
+const socket = io();
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    fetchIdeas();
+    fetchFields();
     initializeJsPlumb();
-    fetchInitialData();
+    renderFieldsAndConnections();
 });
 newIdeaBtn.addEventListener('click', openModalForNewIdea);
 closeBtn.addEventListener('click', closeModal);
@@ -43,41 +45,39 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-// Socket.io event listeners
-socket.on('newIdea', (idea) => {
+// Socket.IO event handlers
+socket.on('ideaCreated', (idea) => {
     ideas.push(idea);
     renderIdeas();
 });
 
-socket.on('deleteIdea', (id) => {
+socket.on('ideaDeleted', (id) => {
     ideas = ideas.filter(idea => idea._id !== id);
     renderIdeas();
 });
 
-socket.on('newField', (field) => {
+socket.on('fieldCreated', (field) => {
     fields.push(field);
     renderFieldsAndConnections();
 });
 
-socket.on('deleteField', (id) => {
+socket.on('fieldDeleted', (id) => {
     fields = fields.filter(field => field._id !== id);
-    connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
     renderFieldsAndConnections();
 });
 
-// Fetch initial data
-async function fetchInitialData() {
-    try {
-        const ideasResponse = await fetch('/ideas');
-        ideas = await ideasResponse.json();
-        renderIdeas();
+// Fetch ideas from server
+async function fetchIdeas() {
+    const response = await fetch('/ideas');
+    ideas = await response.json();
+    renderIdeas();
+}
 
-        const fieldsResponse = await fetch('/fields');
-        fields = await fieldsResponse.json();
-        renderFieldsAndConnections();
-    } catch (error) {
-        console.error('Failed to fetch initial data', error);
-    }
+// Fetch fields from server
+async function fetchFields() {
+    const response = await fetch('/fields');
+    fields = await response.json();
+    renderFieldsAndConnections();
 }
 
 // Functions
@@ -169,7 +169,8 @@ async function saveIdea(e) {
         description,
         category,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        list: []
     };
 
     try {
@@ -177,34 +178,27 @@ async function saveIdea(e) {
         if (editMode && editIdeaId !== null) {
             response = await fetch(`/ideas/${editIdeaId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(ideaData)
             });
         } else {
             response = await fetch('/ideas', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(ideaData)
             });
         }
 
-        const newIdea = await response.json();
+        const savedIdea = await response.json();
         if (editMode) {
-            const index = ideas.findIndex(idea => idea._id === editIdeaId);
-            ideas[index] = newIdea;
+            ideas = ideas.map(idea => idea._id === savedIdea._id ? savedIdea : idea);
         } else {
-            ideas.push(newIdea);
+            ideas.push(savedIdea);
         }
-
-        localStorage.setItem('ideas', JSON.stringify(ideas));
-        closeModal();
         renderIdeas();
+        closeModal();
     } catch (error) {
-        console.error('Failed to save idea', error);
+        console.error('Error saving idea:', error);
     }
 }
 
@@ -223,8 +217,8 @@ function renderIdeas() {
             <h3>${idea.title}</h3>
             <p>${idea.description}</p>
             <span class="category">${idea.category}</span>
-            <button onclick="editIdea('${idea._id}')" class="btn">Edit</button>
-            <button onclick="deleteIdea('${idea._id}')" class="btn">Delete</button>
+            <button onclick="editIdea(${idea._id})" class="btn">Edit</button>
+            <button onclick="deleteIdea(${idea._id})" class="btn">Delete</button>
         `;
 
         // Add list functionality
@@ -234,7 +228,7 @@ function renderIdeas() {
             <h4>List</h4>
             <ul id="list-${idea._id}"></ul>
             <input type="text" id="listInput-${idea._id}" placeholder="Add list item">
-            <button onclick="addListItem('${idea._id}')" class="btn">Add Item</button>
+            <button onclick="addListItem(${idea._id})" class="btn">Add Item</button>
         `;
         ideaCard.appendChild(listContainer);
 
@@ -255,7 +249,7 @@ function addListItem(ideaId) {
     if (listItem !== '') {
         const idea = ideas.find(idea => idea._id === ideaId);
         idea.list.push(listItem);
-        localStorage.setItem('ideas', JSON.stringify(ideas));
+        updateIdea(idea);
         addListItemToDOM(ideaId, listItem);
         listInput.value = '';
     }
@@ -279,7 +273,7 @@ function deleteListItem(ideaId, listItem) {
     const idea = ideas.find(idea => idea._id === ideaId);
     if (idea) {
         idea.list = idea.list.filter(item => item !== listItem);
-        localStorage.setItem('ideas', JSON.stringify(ideas));
+        updateIdea(idea);
         renderIdeas();
     }
 }
@@ -294,14 +288,11 @@ function editIdea(id) {
 async function deleteIdea(id) {
     if (confirm('Are you sure you want to delete this idea?')) {
         try {
-            await fetch(`/ideas/${id}`, {
-                method: 'DELETE'
-            });
+            await fetch(`/ideas/${id}`, { method: 'DELETE' });
             ideas = ideas.filter(idea => idea._id !== id);
-            localStorage.setItem('ideas', JSON.stringify(ideas));
             renderIdeas();
         } catch (error) {
-            console.error('Failed to delete idea', error);
+            console.error('Error deleting idea:', error);
         }
     }
 }
@@ -315,10 +306,8 @@ function toggleWhiteboard() {
     }
 }
 
-function addField() {
-    const fieldId = `field-${Date.now()}`;
-    const field = {
-        id: fieldId,
+async function addField() {
+    const fieldData = {
         left: `${Math.random() * (whiteboardCanvas.clientWidth - 200)}px`,
         top: `${Math.random() * (whiteboardCanvas.clientHeight - 150)}px`,
         content: 'Enter text here...',
@@ -327,9 +316,19 @@ function addField() {
         color: '#000000'
     };
 
-    fields.push(field);
-    localStorage.setItem('fields', JSON.stringify(fields));
-    renderField(field);
+    try {
+        const response = await fetch('/fields', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fieldData)
+        });
+
+        const newField = await response.json();
+        fields.push(newField);
+        renderField(newField);
+    } catch (error) {
+        console.error('Error adding field:', error);
+    }
 }
 
 function createNewField(left, top) {
@@ -345,7 +344,6 @@ function createNewField(left, top) {
     };
 
     fields.push(field);
-    localStorage.setItem('fields', JSON.stringify(fields));
     renderField(field);
 
     return fieldId;
@@ -354,7 +352,7 @@ function createNewField(left, top) {
 function renderField(field) {
     const fieldElement = document.createElement('div');
     fieldElement.className = 'whiteboard-field';
-    fieldElement.id = field.id;
+    fieldElement.id = field._id;
     fieldElement.style.left = field.left;
     fieldElement.style.top = field.top;
 
@@ -363,7 +361,7 @@ function renderField(field) {
     deleteBtn.innerHTML = '&times;';
     deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        deleteField(field.id);
+        deleteField(field._id);
     });
 
     const imageBtn = document.createElement('button');
@@ -401,7 +399,7 @@ function renderField(field) {
         if (content.innerHTML.trim() === '') {
             content.innerHTML = 'Enter text here...';
         }
-        updateFieldContent(field.id, content.innerHTML);
+        updateFieldContent(field._id, content.innerHTML);
     });
 
     let isDragging = false;
@@ -428,11 +426,11 @@ function renderField(field) {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 if (isDragging) {
-                    const updatedField = fields.find(f => f.id === field.id);
+                    const updatedField = fields.find(f => f._id === field._id);
                     if (updatedField) {
                         updatedField.left = fieldElement.style.left;
                         updatedField.top = fieldElement.style.top;
-                        localStorage.setItem('fields', JSON.stringify(fields));
+                        updateField(updatedField);
                         jsPlumbInstance.repaintEverything(); // Repaint connections
                     }
                 }
@@ -482,11 +480,11 @@ function renderField(field) {
         handle: '.content',
         filter: '.connection-point',
         stop: function(event) {
-            const updatedField = fields.find(f => f.id === field.id);
+            const updatedField = fields.find(f => f._id === field._id);
             if (updatedField) {
                 updatedField.left = fieldElement.style.left;
                 updatedField.top = fieldElement.style.top;
-                localStorage.setItem('fields', JSON.stringify(updatedField));
+                updateField(updatedField);
                 jsPlumbInstance.repaintEverything(); // Repaint connections
             }
         }
@@ -520,13 +518,16 @@ function renderFieldsAndConnections() {
     });
 }
 
-function deleteField(id) {
-    jsPlumbInstance.remove(id);
-    fields = fields.filter(field => field.id !== id);
-    connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
-    localStorage.setItem('fields', JSON.stringify(fields));
-    localStorage.setItem('connections', JSON.stringify(connections));
-    jsPlumbInstance.repaintEverything(); // Repaint connections
+async function deleteField(id) {
+    try {
+        await fetch(`/fields/${id}`, { method: 'DELETE' });
+        jsPlumbInstance.remove(id);
+        fields = fields.filter(field => field._id !== id);
+        connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
+        renderFieldsAndConnections();
+    } catch (error) {
+        console.error('Error deleting field:', error);
+    }
 }
 
 function addImage(fieldElement) {
@@ -592,7 +593,7 @@ function openTextEditor(fieldElement) {
     const fontSize = textEditor.querySelector('.font-size');
     const saveBtn = textEditor.querySelector('.save-text');
     
-    const field = fields.find(f => f.id === fieldElement.id);
+    const field = fields.find(f => f._id === fieldElement.id);
     textarea.value = field.extendedText || '';
     fontColor.value = field.color;
     fontSize.value = field.fontSize;
@@ -605,17 +606,17 @@ function openTextEditor(fieldElement) {
         fieldElement.querySelector('.content').style.color = fontColor.value;
         fieldElement.querySelector('.content').style.fontSize = fontSize.value;
         
-        localStorage.setItem('fields', JSON.stringify(fields));
+        updateField(field);
         whiteboardCanvas.removeChild(textEditor);
         jsPlumbInstance.repaintEverything(); // Repaint connections
     });
 }
 
 function updateFieldContent(fieldId, content) {
-    const field = fields.find(f => f.id === fieldId);
+    const field = fields.find(f => f._id === fieldId);
     if (field) {
         field.content = content;
-        localStorage.setItem('fields', JSON.stringify(fields));
+        updateField(field);
         jsPlumbInstance.repaintEverything(); // Repaint connections
     }
 }
@@ -639,6 +640,32 @@ function placeCaretAtEnd(el) {
         textRange.moveToElementText(el);
         textRange.collapse(false);
         textRange.select();
+    }
+}
+
+async function updateIdea(idea) {
+    try {
+        await fetch(`/ideas/${idea._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(idea)
+        });
+        renderIdeas();
+    } catch (error) {
+        console.error('Error updating idea:', error);
+    }
+}
+
+async function updateField(field) {
+    try {
+        await fetch(`/fields/${field._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(field)
+        });
+        renderFieldsAndConnections();
+    } catch (error) {
+        console.error('Error updating field:', error);
     }
 }
 
