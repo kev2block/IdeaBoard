@@ -4,15 +4,17 @@ const express = require('express');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 const app = express();
 const port = 8080;
 
-const clientId = '8otoadq8qqa79209i0qg663kv6ocij';
-const clientSecret = 'u4vh2gkc5ons0fzb9fea5x2sfofay5';
-const redirectUri = 'https://localhost:8080/callback';
-
-const allowedUsers = ['kev2block', 'Paini'];
+const clientId = process.env.TWITCH_CLIENT_ID;
+const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+const redirectUri = process.env.REDIRECT_URI;
+const allowedUsers = process.env.ALLOWED_USERS.split(',');
 
 const options = {
   key: fs.readFileSync('key.pem'),
@@ -24,7 +26,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/login', (req, res) => {
   const twitchAuthUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=user:read:email`;
-  res.redirect(twitchAuthUrl);
+  res.redirect(titchAuthUrl);
 });
 
 app.get('/callback', async (req, res) => {
