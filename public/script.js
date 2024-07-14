@@ -1,4 +1,3 @@
-// Initialize socket.io client
 const socket = io();
 
 // DOM Elements
@@ -27,11 +26,46 @@ let jsPlumbInstance;
 let editMode = false;
 let editIdeaId = null;
 
+// Fetch initial data
+fetch('/ideas')
+  .then(response => response.json())
+  .then(data => {
+    ideas = data;
+    renderIdeas();
+  });
+
+fetch('/fields')
+  .then(response => response.json())
+  .then(data => {
+    fields = data;
+    renderFieldsAndConnections();
+  });
+
+// Socket.io event listeners
+socket.on('newIdea', idea => {
+  ideas.push(idea);
+  renderIdeas();
+});
+
+socket.on('deleteIdea', ideaId => {
+  ideas = ideas.filter(idea => idea._id !== ideaId);
+  renderIdeas();
+});
+
+socket.on('newField', field => {
+  fields.push(field);
+  renderFieldsAndConnections();
+});
+
+socket.on('deleteField', fieldId => {
+  fields = fields.filter(field => field._id !== fieldId);
+  renderFieldsAndConnections();
+});
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    fetchIdeas();
-    fetchFields();
     initializeJsPlumb();
+    renderIdeas();
     renderFieldsAndConnections();
 });
 newIdeaBtn.addEventListener('click', openModalForNewIdea);
@@ -45,56 +79,7 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-// Socket.io event listeners
-socket.on('new-idea', (idea) => {
-    ideas.push(idea);
-    renderIdeas();
-});
-
-socket.on('update-idea', (updatedIdea) => {
-    const index = ideas.findIndex((idea) => idea._id === updatedIdea._id);
-    if (index !== -1) {
-        ideas[index] = updatedIdea;
-        renderIdeas();
-    }
-});
-
-socket.on('delete-idea', (id) => {
-    ideas = ideas.filter((idea) => idea._id !== id);
-    renderIdeas();
-});
-
-socket.on('new-field', (field) => {
-    fields.push(field);
-    renderFieldsAndConnections();
-});
-
-socket.on('update-field', (updatedField) => {
-    const index = fields.findIndex((field) => field._id === updatedField._id);
-    if (index !== -1) {
-        fields[index] = updatedField;
-        renderFieldsAndConnections();
-    }
-});
-
-socket.on('delete-field', (id) => {
-    fields = fields.filter((field) => field._id !== id);
-    renderFieldsAndConnections();
-});
-
 // Functions
-async function fetchIdeas() {
-    const response = await fetch('/ideas');
-    ideas = await response.json();
-    renderIdeas();
-}
-
-async function fetchFields() {
-    const response = await fetch('/fields');
-    fields = await response.json();
-    renderFieldsAndConnections();
-}
-
 function initializeJsPlumb() {
     jsPlumbInstance = jsPlumb.getInstance({
         Connector: ["Bezier", { curviness: 50 }],
@@ -172,41 +157,42 @@ function outsideClick(e) {
     }
 }
 
-async function saveIdea(e) {
+function saveIdea(e) {
     e.preventDefault();
     const title = document.getElementById('ideaTitle').value;
     const description = document.getElementById('ideaDescription').value;
     const category = document.getElementById('ideaCategory').value;
 
     if (editMode && editIdeaId !== null) {
-        const response = await fetch(`/ideas/${editIdeaId}`, {
+        fetch(`/ideas/${editIdeaId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ title, description, category, updatedAt: new Date().toISOString() })
-        });
-        const updatedIdea = await response.json();
-        const index = ideas.findIndex(idea => idea._id === editIdeaId);
-        if (index !== -1) {
-            ideas[index] = updatedIdea;
-            socket.emit('update-idea', updatedIdea); // Emit update idea event
-        }
+            body: JSON.stringify({ title, description, category })
+        }).then(response => response.json())
+          .then(updatedIdea => {
+              const index = ideas.findIndex(idea => idea._id === editIdeaId);
+              if (index !== -1) {
+                  ideas[index] = updatedIdea;
+                  renderIdeas();
+                  closeModal();
+              }
+          });
     } else {
-        const response = await fetch('/ideas', {
+        fetch('/ideas', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ title, description, category, createdAt: new Date().toISOString() })
-        });
-        const newIdea = await response.json();
-        ideas.push(newIdea);
-        socket.emit('new-idea', newIdea); // Emit new idea event
+            body: JSON.stringify({ title, description, category, createdAt: new Date(), updatedAt: new Date() })
+        }).then(response => response.json())
+          .then(newIdea => {
+              ideas.push(newIdea);
+              renderIdeas();
+              closeModal();
+          });
     }
-
-    closeModal();
-    renderIdeas();
 }
 
 function renderIdeas() {
@@ -254,11 +240,21 @@ function addListItem(ideaId) {
     const listInput = document.getElementById(`listInput-${ideaId}`);
     const listItem = listInput.value.trim();
     if (listItem !== '') {
-        const idea = ideas.find(idea => idea._id === ideaId);
-        idea.list.push(listItem);
-        localStorage.setItem('ideas', JSON.stringify(ideas));
-        addListItemToDOM(ideaId, listItem);
-        listInput.value = '';
+        fetch(`/ideas/${ideaId}/list`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ listItem })
+        }).then(response => response.json())
+          .then(updatedIdea => {
+              const idea = ideas.find(idea => idea._id === ideaId);
+              if (idea) {
+                  idea.list = updatedIdea.list;
+                  addListItemToDOM(ideaId, listItem);
+                  listInput.value = '';
+              }
+          });
     }
 }
 
@@ -277,12 +273,20 @@ function addListItemToDOM(ideaId, listItem) {
 }
 
 function deleteListItem(ideaId, listItem) {
-    const idea = ideas.find(idea => idea._id === ideaId);
-    if (idea) {
-        idea.list = idea.list.filter(item => item !== listItem);
-        localStorage.setItem('ideas', JSON.stringify(ideas));
-        renderIdeas();
-    }
+    fetch(`/ideas/${ideaId}/list`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ listItem })
+    }).then(response => response.json())
+      .then(updatedIdea => {
+          const idea = ideas.find(idea => idea._id === ideaId);
+          if (idea) {
+              idea.list = updatedIdea.list;
+              renderIdeas();
+          }
+      });
 }
 
 function editIdea(id) {
@@ -292,14 +296,14 @@ function editIdea(id) {
     }
 }
 
-async function deleteIdea(id) {
+function deleteIdea(id) {
     if (confirm('Are you sure you want to delete this idea?')) {
-        await fetch(`/ideas/${id}`, {
+        fetch(`/ideas/${id}`, {
             method: 'DELETE'
+        }).then(() => {
+            ideas = ideas.filter(idea => idea._id !== id);
+            renderIdeas();
         });
-        ideas = ideas.filter(idea => idea._id !== id);
-        socket.emit('delete-idea', id); // Emit delete idea event
-        renderIdeas();
     }
 }
 
@@ -324,10 +328,17 @@ function addField() {
         color: '#000000'
     };
 
-    fields.push(field);
-    localStorage.setItem('fields', JSON.stringify(fields));
-    renderField(field);
-    socket.emit('new-field', field); // Emit new field event
+    fetch('/fields', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(field)
+    }).then(response => response.json())
+      .then(newField => {
+          fields.push(newField);
+          renderField(newField);
+      });
 }
 
 function createNewField(left, top) {
@@ -342,10 +353,17 @@ function createNewField(left, top) {
         color: '#000000'
     };
 
-    fields.push(field);
-    localStorage.setItem('fields', JSON.stringify(fields));
-    renderField(field);
-    socket.emit('new-field', field); // Emit new field event
+    fetch('/fields', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(field)
+    }).then(response => response.json())
+      .then(newField => {
+          fields.push(newField);
+          renderField(newField);
+      });
 
     return fieldId;
 }
@@ -520,13 +538,16 @@ function renderFieldsAndConnections() {
 }
 
 function deleteField(id) {
-    jsPlumbInstance.remove(id);
-    fields = fields.filter(field => field.id !== id);
-    connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
-    localStorage.setItem('fields', JSON.stringify(fields));
-    localStorage.setItem('connections', JSON.stringify(connections));
-    jsPlumbInstance.repaintEverything(); // Repaint connections
-    socket.emit('delete-field', id); // Emit delete field event
+    fetch(`/fields/${id}`, {
+        method: 'DELETE'
+    }).then(() => {
+        jsPlumbInstance.remove(id);
+        fields = fields.filter(field => field._id !== id);
+        connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
+        localStorage.setItem('fields', JSON.stringify(fields));
+        localStorage.setItem('connections', JSON.stringify(connections));
+        jsPlumbInstance.repaintEverything(); // Repaint connections
+    });
 }
 
 function addImage(fieldElement) {
@@ -608,7 +629,6 @@ function openTextEditor(fieldElement) {
         localStorage.setItem('fields', JSON.stringify(fields));
         whiteboardCanvas.removeChild(textEditor);
         jsPlumbInstance.repaintEverything(); // Repaint connections
-        socket.emit('update-field', field); // Emit update field event
     });
 }
 
@@ -618,7 +638,6 @@ function updateFieldContent(fieldId, content) {
         field.content = content;
         localStorage.setItem('fields', JSON.stringify(fields));
         jsPlumbInstance.repaintEverything(); // Repaint connections
-        socket.emit('update-field', field); // Emit update field event
     }
 }
 
