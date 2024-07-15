@@ -43,47 +43,49 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/ideas', async (req, res) => {
-    const ideas = await Idea.find();
-    res.json(ideas);
+    try {
+        const ideas = await Idea.find();
+        res.json(ideas);
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while fetching ideas.' });
+    }
 });
 
 app.post('/ideas', async (req, res) => {
-    const idea = new Idea(req.body);
-    await idea.save();
-    res.json(idea);
-});
-
-app.put('/ideas/:id', async (req, res) => {
-    const idea = await Idea.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(idea);
+    try {
+        const idea = new Idea(req.body);
+        await idea.save();
+        io.emit('new-idea', idea);
+        res.json(idea);
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while saving the idea.' });
+    }
 });
 
 app.delete('/ideas/:id', async (req, res) => {
-    await Idea.findByIdAndDelete(req.params.id);
-    res.sendStatus(204);
+    try {
+        await Idea.findByIdAndDelete(req.params.id);
+        io.emit('delete-idea', req.params.id);
+        res.status(204).send();
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while deleting the idea.' });
+    }
 });
 
 app.get('/fields-and-connections', async (req, res) => {
-    const fields = await Field.find();
-    const connections = await Connection.find();
-    res.json({ fields, connections });
+    try {
+        const fields = await Field.find();
+        const connections = await Connection.find();
+        res.json({ fields, connections });
+    } catch (error) {
+        res.status(500).json({ error: 'An error occurred while fetching fields and connections.' });
+    }
 });
 
 io.on('connection', (socket) => {
-    socket.on('new-idea', (idea) => {
-        socket.broadcast.emit('new-idea', idea);
-    });
-
-    socket.on('delete-idea', (id) => {
-        socket.broadcast.emit('delete-idea', id);
-    });
-
-    socket.on('update-fields', (fields) => {
-        socket.broadcast.emit('update-fields', fields);
-    });
-
-    socket.on('update-connections', (connections) => {
-        socket.broadcast.emit('update-connections', connections);
+    console.log('New client connected');
+    socket.on('disconnect', () => {
+        console.log('Client disconnected');
     });
 });
 
