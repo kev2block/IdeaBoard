@@ -1,107 +1,91 @@
-const fs = require('fs');
-const http = require('http');
 const express = require('express');
-const socketIo = require('socket.io');
+const http = require('http');
 const mongoose = require('mongoose');
-const bodyParser = require('body-parser');
-const cors = require('cors');
+const socketIo = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-const mongoUri = 'mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard';
+// Connect to MongoDB
+mongoose.connect('mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard', { useNewUrlParser: true, useUnifiedTopology: true });
 
-mongoose.connect(mongoUri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
-  console.log('Connected to MongoDB');
-}).catch(err => {
-  console.error('Error connecting to MongoDB', err);
+const IdeaSchema = new mongoose.Schema({
+    title: String,
+    description: String,
+    category: String,
+    createdAt: String,
+    updatedAt: String,
+    list: [String]
 });
 
-// Define Schemas and Models
-const ideaSchema = new mongoose.Schema({
-  title: String,
-  description: String,
-  category: String,
-  list: [String],
-  createdAt: Date,
-  updatedAt: Date
+const FieldSchema = new mongoose.Schema({
+    id: String,
+    left: String,
+    top: String,
+    content: String,
+    extendedText: String,
+    fontSize: String,
+    color: String
 });
 
-const fieldSchema = new mongoose.Schema({
-  left: String,
-  top: String,
-  content: String,
-  extendedText: String,
-  fontSize: String,
-  color: String
+const ConnectionSchema = new mongoose.Schema({
+    sourceId: String,
+    targetId: String
 });
 
-const Idea = mongoose.model('Idea', ideaSchema);
-const Field = mongoose.model('Field', fieldSchema);
+const Idea = mongoose.model('Idea', IdeaSchema);
+const Field = mongoose.model('Field', FieldSchema);
+const Connection = mongoose.model('Connection', ConnectionSchema);
 
-app.use(bodyParser.json());
-app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/ideas', async (req, res) => {
-  const ideas = await Idea.find();
-  res.json(ideas);
+    const ideas = await Idea.find();
+    res.json(ideas);
 });
 
 app.post('/ideas', async (req, res) => {
-  const newIdea = new Idea({
-    ...req.body,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  });
-  await newIdea.save();
-  io.emit('idea-added', newIdea);
-  res.status(201).json(newIdea);
+    const idea = new Idea(req.body);
+    await idea.save();
+    res.json(idea);
+});
+
+app.put('/ideas/:id', async (req, res) => {
+    const idea = await Idea.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json(idea);
 });
 
 app.delete('/ideas/:id', async (req, res) => {
-  await Idea.findByIdAndDelete(req.params.id);
-  io.emit('idea-deleted', req.params.id);
-  res.status(204).send();
+    await Idea.findByIdAndDelete(req.params.id);
+    res.sendStatus(204);
 });
 
 app.get('/fields-and-connections', async (req, res) => {
-  const fields = await Field.find();
-  res.json({ fields });
-});
-
-app.post('/fields', async (req, res) => {
-  const newField = new Field(req.body);
-  await newField.save();
-  io.emit('field-added', newField);
-  res.status(201).json(newField);
-});
-
-app.delete('/fields/:id', async (req, res) => {
-  await Field.findByIdAndDelete(req.params.id);
-  io.emit('field-deleted', req.params.id);
-  res.status(204).send();
+    const fields = await Field.find();
+    const connections = await Connection.find();
+    res.json({ fields, connections });
 });
 
 io.on('connection', (socket) => {
-  console.log('New client connected');
+    socket.on('new-idea', (idea) => {
+        socket.broadcast.emit('new-idea', idea);
+    });
 
-  socket.on('update-fields', async (updatedFields) => {
-    await Field.deleteMany({});
-    await Field.insertMany(updatedFields);
-    socket.broadcast.emit('update-fields', updatedFields);
-  });
+    socket.on('delete-idea', (id) => {
+        socket.broadcast.emit('delete-idea', id);
+    });
 
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
+    socket.on('update-fields', (fields) => {
+        socket.broadcast.emit('update-fields', fields);
+    });
+
+    socket.on('update-connections', (connections) => {
+        socket.broadcast.emit('update-connections', connections);
+    });
 });
 
-server.listen(3000, () => {
-  console.log(`Server is running on port 3000`);
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -43,28 +43,23 @@ filterSelect.addEventListener('change', renderIdeas);
 const socket = io();
 
 socket.on('new-idea', (idea) => {
-    ideas.push(idea);
-    renderIdeas();
+  ideas.push(idea);
+  renderIdeas();
 });
 
 socket.on('delete-idea', (id) => {
-    ideas = ideas.filter(idea => idea._id !== id);
-    renderIdeas();
-});
-
-socket.on('new-field', (field) => {
-    fields.push(field);
-    renderFieldsAndConnections();
-});
-
-socket.on('delete-field', (id) => {
-    fields = fields.filter(field => field._id !== id);
-    renderFieldsAndConnections();
+  ideas = ideas.filter(idea => idea._id !== id);
+  renderIdeas();
 });
 
 socket.on('update-fields', (updatedFields) => {
-    fields = updatedFields;
-    renderFieldsAndConnections();
+  fields = updatedFields;
+  renderFieldsAndConnections();
+});
+
+socket.on('update-connections', (updatedConnections) => {
+  connections = updatedConnections;
+  renderFieldsAndConnections();
 });
 
 function initializeJsPlumb() {
@@ -284,8 +279,8 @@ async function deleteIdea(id) {
             method: 'DELETE'
         });
         ideas = ideas.filter(idea => idea._id !== id);
-        socket.emit('delete-idea', id);
         renderIdeas();
+        socket.emit('delete-idea', id);
     }
 }
 
@@ -313,7 +308,6 @@ function addField() {
     fields.push(field);
     saveFields();
     renderField(field);
-    socket.emit('new-field', field);
 }
 
 function createNewField(left, top) {
@@ -331,7 +325,6 @@ function createNewField(left, top) {
     fields.push(field);
     saveFields();
     renderField(field);
-    socket.emit('new-field', field);
 
     return fieldId;
 }
@@ -519,7 +512,6 @@ function deleteField(id) {
     connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
     saveFields();
     saveConnections();
-    socket.emit('delete-field', id);
     jsPlumbInstance.repaintEverything(); // Repaint connections
 }
 
