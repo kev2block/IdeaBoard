@@ -1,5 +1,4 @@
-const socket = io();
-
+// DOM Elements
 const newIdeaBtn = document.getElementById('newIdeaBtn');
 const searchInput = document.getElementById('searchInput');
 const ideaBoard = document.getElementById('ideaBoard');
@@ -15,42 +14,20 @@ const whiteboardCanvas = document.getElementById('whiteboardCanvas');
 const filterSelect = document.getElementById('filterSelect');
 const backBtn = document.getElementById('backBtn');
 
+// State
 let ideas = [];
 let fields = [];
-let connections = JSON.parse(localStorage.getItem('connections')) || [];
-
+let connections = [];
 let jsPlumbInstance;
 let editMode = false;
 let editIdeaId = null;
 
+// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    fetchIdeas();
-    fetchFields();
     initializeJsPlumb();
+    fetchIdeas();
+    fetchFieldsAndConnections();
 });
-
-socket.on('ideaAdded', (idea) => {
-  ideas.push(idea);
-  renderIdeas();
-});
-
-socket.on('ideaDeleted', (id) => {
-  ideas = ideas.filter(idea => idea._id !== id);
-  renderIdeas();
-});
-
-socket.on('fieldAdded', (field) => {
-  fields.push(field);
-  renderFieldsAndConnections();
-});
-
-socket.on('fieldDeleted', (id) => {
-  fields = fields.filter(field => field._id !== id);
-  connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
-  localStorage.setItem('connections', JSON.stringify(connections));
-  renderFieldsAndConnections();
-});
-
 newIdeaBtn.addEventListener('click', openModalForNewIdea);
 closeBtn.addEventListener('click', closeModal);
 window.addEventListener('click', outsideClick);
@@ -62,23 +39,33 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-function fetchIdeas() {
-    fetch('/ideas')
-        .then(response => response.json())
-        .then(data => {
-            ideas = data;
-            renderIdeas();
-        });
-}
+// Socket.io
+const socket = io();
 
-function fetchFields() {
-    fetch('/fields')
-        .then(response => response.json())
-        .then(data => {
-            fields = data;
-            renderFieldsAndConnections();
-        });
-}
+socket.on('new-idea', (idea) => {
+    ideas.push(idea);
+    renderIdeas();
+});
+
+socket.on('delete-idea', (id) => {
+    ideas = ideas.filter(idea => idea._id !== id);
+    renderIdeas();
+});
+
+socket.on('new-field', (field) => {
+    fields.push(field);
+    renderFieldsAndConnections();
+});
+
+socket.on('delete-field', (id) => {
+    fields = fields.filter(field => field._id !== id);
+    renderFieldsAndConnections();
+});
+
+socket.on('update-fields', (updatedFields) => {
+    fields = updatedFields;
+    renderFieldsAndConnections();
+});
 
 function initializeJsPlumb() {
     jsPlumbInstance = jsPlumb.getInstance({
@@ -102,7 +89,7 @@ function initializeJsPlumb() {
             (conn.sourceId === connection.targetId && conn.targetId === connection.sourceId)
         )) {
             connections.push(connection);
-            localStorage.setItem('connections', JSON.stringify(connections));
+            saveConnections();
         }
     });
 
@@ -111,7 +98,7 @@ function initializeJsPlumb() {
             !(conn.sourceId === info.sourceId && conn.targetId === info.targetId) &&
             !(conn.sourceId === info.targetId && conn.targetId === info.sourceId)
         );
-        localStorage.setItem('connections', JSON.stringify(connections));
+        saveConnections();
     });
 
     jsPlumbInstance.bind('beforeDrop', function(info) {
@@ -157,7 +144,7 @@ function outsideClick(e) {
     }
 }
 
-function saveIdea(e) {
+async function saveIdea(e) {
     e.preventDefault();
     const title = document.getElementById('ideaTitle').value;
     const description = document.getElementById('ideaDescription').value;
@@ -170,7 +157,13 @@ function saveIdea(e) {
             idea.description = description;
             idea.category = category;
             idea.updatedAt = new Date().toISOString();
-            socket.emit('updateIdea', idea);
+            await fetch(`/ideas/${editIdeaId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(idea)
+            });
         }
     } else {
         const newIdea = {
@@ -180,10 +173,25 @@ function saveIdea(e) {
             createdAt: new Date().toISOString(),
             list: []
         };
-        socket.emit('addIdea', newIdea);
+        const response = await fetch('/ideas', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(newIdea)
+        });
+        const savedIdea = await response.json();
+        ideas.push(savedIdea);
+        socket.emit('new-idea', savedIdea);
     }
 
     closeModal();
+    renderIdeas();
+}
+
+async function fetchIdeas() {
+    const response = await fetch('/ideas');
+    ideas = await response.json();
     renderIdeas();
 }
 
@@ -206,6 +214,7 @@ function renderIdeas() {
             <button onclick="deleteIdea('${idea._id}')" class="btn">Delete</button>
         `;
 
+        // Add list functionality
         const listContainer = document.createElement('div');
         listContainer.className = 'list-container';
         listContainer.innerHTML = `
@@ -218,6 +227,7 @@ function renderIdeas() {
 
         ideaBoard.appendChild(ideaCard);
 
+        // Render existing list items
         if (idea.list) {
             idea.list.forEach(item => {
                 addListItemToDOM(idea._id, item);
@@ -232,7 +242,7 @@ function addListItem(ideaId) {
     if (listItem !== '') {
         const idea = ideas.find(idea => idea._id === ideaId);
         idea.list.push(listItem);
-        socket.emit('updateIdea', idea);
+        saveIdeaList(ideaId, idea.list);
         addListItemToDOM(ideaId, listItem);
         listInput.value = '';
     }
@@ -252,11 +262,11 @@ function addListItemToDOM(ideaId, listItem) {
     listUl.appendChild(listLi);
 }
 
-function deleteListItem(ideaId, listItem) {
+async function deleteListItem(ideaId, listItem) {
     const idea = ideas.find(idea => idea._id === ideaId);
     if (idea) {
         idea.list = idea.list.filter(item => item !== listItem);
-        socket.emit('updateIdea', idea);
+        saveIdeaList(ideaId, idea.list);
         renderIdeas();
     }
 }
@@ -268,9 +278,14 @@ function editIdea(id) {
     }
 }
 
-function deleteIdea(id) {
+async function deleteIdea(id) {
     if (confirm('Are you sure you want to delete this idea?')) {
-        socket.emit('deleteIdea', id);
+        await fetch(`/ideas/${id}`, {
+            method: 'DELETE'
+        });
+        ideas = ideas.filter(idea => idea._id !== id);
+        socket.emit('delete-idea', id);
+        renderIdeas();
     }
 }
 
@@ -295,7 +310,10 @@ function addField() {
         color: '#000000'
     };
 
-    socket.emit('addField', field);
+    fields.push(field);
+    saveFields();
+    renderField(field);
+    socket.emit('new-field', field);
 }
 
 function createNewField(left, top) {
@@ -310,14 +328,18 @@ function createNewField(left, top) {
         color: '#000000'
     };
 
-    socket.emit('addField', field);
+    fields.push(field);
+    saveFields();
+    renderField(field);
+    socket.emit('new-field', field);
+
     return fieldId;
 }
 
 function renderField(field) {
     const fieldElement = document.createElement('div');
     fieldElement.className = 'whiteboard-field';
-    fieldElement.id = field._id;
+    fieldElement.id = field.id;
     fieldElement.style.left = field.left;
     fieldElement.style.top = field.top;
 
@@ -326,7 +348,7 @@ function renderField(field) {
     deleteBtn.innerHTML = '&times;';
     deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        socket.emit('deleteField', field._id);
+        deleteField(field.id);
     });
 
     const imageBtn = document.createElement('button');
@@ -352,17 +374,19 @@ function renderField(field) {
     content.style.color = field.color;
     content.innerHTML = field.content;
 
+    // Add event listener to remove placeholder text on focus
     content.addEventListener('focus', () => {
         if (content.innerHTML === 'Enter text here...') {
             content.innerHTML = '';
         }
     });
 
+    // Add event listener to add placeholder text if the field is empty on blur
     content.addEventListener('blur', () => {
         if (content.innerHTML.trim() === '') {
             content.innerHTML = 'Enter text here...';
         }
-        updateFieldContent(field._id, content.innerHTML);
+        updateFieldContent(field.id, content.innerHTML);
     });
 
     let isDragging = false;
@@ -389,11 +413,12 @@ function renderField(field) {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 if (isDragging) {
-                    const updatedField = fields.find(f => f._id === field._id);
+                    const updatedField = fields.find(f => f.id === field.id);
                     if (updatedField) {
                         updatedField.left = fieldElement.style.left;
                         updatedField.top = fieldElement.style.top;
-                        socket.emit('updateField', updatedField);
+                        saveFields();
+                        jsPlumbInstance.repaintEverything(); // Repaint connections
                     }
                 }
             };
@@ -427,6 +452,7 @@ function renderField(field) {
     fieldElement.appendChild(textBtn);
     fieldElement.appendChild(content);
 
+    // Add connection points
     const positions = ['top', 'right', 'bottom', 'left'];
     positions.forEach(pos => {
         const point = document.createElement('div');
@@ -441,11 +467,12 @@ function renderField(field) {
         handle: '.content',
         filter: '.connection-point',
         stop: function(event) {
-            const updatedField = fields.find(f => f._id === field._id);
+            const updatedField = fields.find(f => f.id === field.id);
             if (updatedField) {
                 updatedField.left = fieldElement.style.left;
                 updatedField.top = fieldElement.style.top;
-                socket.emit('updateField', updatedField);
+                saveFields();
+                jsPlumbInstance.repaintEverything(); // Repaint connections
             }
         }
     });
@@ -462,11 +489,14 @@ function renderField(field) {
 }
 
 function renderFieldsAndConnections() {
+    // Clear existing fields and connections
     whiteboardCanvas.innerHTML = '';
     jsPlumbInstance.deleteEveryEndpoint();
     
+    // Render fields
     fields.forEach(renderField);
     
+    // Render connections
     connections.forEach(conn => {
         jsPlumbInstance.connect({
             source: conn.sourceId,
@@ -475,8 +505,22 @@ function renderFieldsAndConnections() {
     });
 }
 
+async function fetchFieldsAndConnections() {
+    const response = await fetch('/fields-and-connections');
+    const data = await response.json();
+    fields = data.fields;
+    connections = data.connections;
+    renderFieldsAndConnections();
+}
+
 function deleteField(id) {
-    socket.emit('deleteField', id);
+    jsPlumbInstance.remove(id);
+    fields = fields.filter(field => field.id !== id);
+    connections = connections.filter(conn => conn.sourceId !== id && conn.targetId !== id);
+    saveFields();
+    saveConnections();
+    socket.emit('delete-field', id);
+    jsPlumbInstance.repaintEverything(); // Repaint connections
 }
 
 function addImage(fieldElement) {
@@ -491,7 +535,7 @@ function addImage(fieldElement) {
                 const contentDiv = fieldElement.querySelector('.content');
                 const img = document.createElement('img');
                 img.src = event.target.result;
-                img.style.pointerEvents = 'none';
+                img.style.pointerEvents = 'none';  // Make image non-draggable
                 img.className = 'whiteboard-image';
                 
                 const imgWrapper = document.createElement('div');
@@ -503,14 +547,14 @@ function addImage(fieldElement) {
                 deleteImgBtn.innerHTML = '&times;';
                 deleteImgBtn.addEventListener('click', () => {
                     imgWrapper.remove();
-                    updateFieldContent(fieldElement._id, contentDiv.innerHTML);
+                    updateFieldContent(fieldElement.id, contentDiv.innerHTML);
                 });
                 
                 imgWrapper.appendChild(deleteImgBtn);
                 contentDiv.appendChild(imgWrapper);
-                updateFieldContent(fieldElement._id, contentDiv.innerHTML);
+                updateFieldContent(fieldElement.id, contentDiv.innerHTML);
                 placeCaretAtEnd(contentDiv);
-                jsPlumbInstance.repaintEverything();
+                jsPlumbInstance.repaintEverything(); // Repaint connections
             }
             reader.readAsDataURL(file);
         }
@@ -542,7 +586,7 @@ function openTextEditor(fieldElement) {
     const fontSize = textEditor.querySelector('.font-size');
     const saveBtn = textEditor.querySelector('.save-text');
     
-    const field = fields.find(f => f._id === fieldElement._id);
+    const field = fields.find(f => f.id === fieldElement.id);
     textarea.value = field.extendedText || '';
     fontColor.value = field.color;
     fontSize.value = field.fontSize;
@@ -555,18 +599,18 @@ function openTextEditor(fieldElement) {
         fieldElement.querySelector('.content').style.color = fontColor.value;
         fieldElement.querySelector('.content').style.fontSize = fontSize.value;
         
-        socket.emit('updateField', field);
+        saveFields();
         whiteboardCanvas.removeChild(textEditor);
-        jsPlumbInstance.repaintEverything();
+        jsPlumbInstance.repaintEverything(); // Repaint connections
     });
 }
 
 function updateFieldContent(fieldId, content) {
-    const field = fields.find(f => f._id === fieldId);
+    const field = fields.find(f => f.id === fieldId);
     if (field) {
         field.content = content;
-        socket.emit('updateField', field);
-        jsPlumbInstance.repaintEverything();
+        saveFields();
+        jsPlumbInstance.repaintEverything(); // Repaint connections
     }
 }
 
@@ -574,6 +618,17 @@ function toggleBackground() {
     whiteboardCanvas.style.backgroundColor = toggleBgBtn.checked ? '#808080' : '#ecf0f1';
 }
 
+function saveFields() {
+    localStorage.setItem('fields', JSON.stringify(fields));
+    socket.emit('update-fields', fields);
+}
+
+function saveConnections() {
+    localStorage.setItem('connections', JSON.stringify(connections));
+    socket.emit('update-connections', connections);
+}
+
+// Utility function to place caret at end
 function placeCaretAtEnd(el) {
     el.focus();
     if (typeof window.getSelection !== "undefined" && typeof document.createRange !== "undefined") {
@@ -591,5 +646,6 @@ function placeCaretAtEnd(el) {
     }
 }
 
-renderIdeas();
-renderFieldsAndConnections();
+// Initial render
+fetchIdeas();
+fetchFieldsAndConnections();
