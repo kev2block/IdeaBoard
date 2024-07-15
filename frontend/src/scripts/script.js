@@ -1,4 +1,3 @@
-// DOM Elements
 const newIdeaBtn = document.getElementById('newIdeaBtn');
 const searchInput = document.getElementById('searchInput');
 const ideaBoard = document.getElementById('ideaBoard');
@@ -14,7 +13,6 @@ const whiteboardCanvas = document.getElementById('whiteboardCanvas');
 const filterSelect = document.getElementById('filterSelect');
 const backBtn = document.getElementById('backBtn');
 
-// State
 let ideas = [];
 let fields = [];
 let connections = [];
@@ -22,7 +20,6 @@ let jsPlumbInstance;
 let editMode = false;
 let editIdeaId = null;
 
-// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     initializeJsPlumb();
     fetchIdeas();
@@ -39,12 +36,19 @@ addFieldBtn.addEventListener('click', addField);
 toggleBgBtn.addEventListener('change', toggleBackground);
 filterSelect.addEventListener('change', renderIdeas);
 
-// Socket.io
 const socket = io();
 
 socket.on('new-idea', (idea) => {
   ideas.push(idea);
   renderIdeas();
+});
+
+socket.on('update-idea', (updatedIdea) => {
+  const index = ideas.findIndex(idea => idea._id === updatedIdea._id);
+  if (index !== -1) {
+    ideas[index] = updatedIdea;
+    renderIdeas();
+  }
 });
 
 socket.on('delete-idea', (id) => {
@@ -54,11 +58,6 @@ socket.on('delete-idea', (id) => {
 
 socket.on('update-fields', (updatedFields) => {
   fields = updatedFields;
-  renderFieldsAndConnections();
-});
-
-socket.on('update-connections', (updatedConnections) => {
-  connections = updatedConnections;
   renderFieldsAndConnections();
 });
 
@@ -177,7 +176,6 @@ async function saveIdea(e) {
         });
         const savedIdea = await response.json();
         ideas.push(savedIdea);
-        socket.emit('new-idea', savedIdea);
     }
 
     closeModal();
@@ -280,7 +278,6 @@ async function deleteIdea(id) {
         });
         ideas = ideas.filter(idea => idea._id !== id);
         renderIdeas();
-        socket.emit('delete-idea', id);
     }
 }
 
@@ -484,7 +481,9 @@ function renderField(field) {
 function renderFieldsAndConnections() {
     // Clear existing fields and connections
     whiteboardCanvas.innerHTML = '';
-    jsPlumbInstance.deleteEveryEndpoint();
+    if (jsPlumbInstance) {
+        jsPlumbInstance.deleteEveryEndpoint();
+    }
     
     // Render fields
     fields.forEach(renderField);
@@ -502,7 +501,6 @@ async function fetchFieldsAndConnections() {
     const response = await fetch('/fields-and-connections');
     const data = await response.json();
     fields = data.fields;
-    connections = data.connections;
     renderFieldsAndConnections();
 }
 
@@ -611,12 +609,24 @@ function toggleBackground() {
 }
 
 function saveFields() {
-    localStorage.setItem('fields', JSON.stringify(fields));
+    fetch('/fields', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(fields)
+    });
     socket.emit('update-fields', fields);
 }
 
 function saveConnections() {
-    localStorage.setItem('connections', JSON.stringify(connections));
+    fetch('/connections', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(connections)
+    });
     socket.emit('update-connections', connections);
 }
 

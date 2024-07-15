@@ -1,0 +1,15 @@
+{
+  "name": "idea-board-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Idea Board",
+  "main": "index.html",
+  "scripts": {
+    "start": "live-server"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "live-server": "^1.2.1"
+  },
+  "author": "",
+  "license": "ISC"
+}

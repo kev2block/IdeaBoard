@@ -1,0 +1,17 @@
+{
+  "name": "idea-board-backend",
+  "version": "1.0.0",
+  "description": "Backend for Idea Board",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "mongoose": "^5.12.3",
+    "socket.io": "^4.0.1"
+  },
+  "author": "",
+  "license": "ISC"
+}

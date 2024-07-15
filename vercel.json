@@ -1,15 +1,28 @@
 {
   "version": 2,
+  "name": "idea-board",
   "builds": [
     {
-      "src": "server.js",
+      "src": "frontend/public/*",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "backend/server.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/server.js"
+      "dest": "frontend/public/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/public/styles.css"
     }
   ]
 }
