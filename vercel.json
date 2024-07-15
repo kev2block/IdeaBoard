@@ -1,9 +1,8 @@
 {
   "version": 2,
-  "name": "idea-board",
   "builds": [
     {
-      "src": "frontend/public/*",
+      "src": "frontend/index.html",
       "use": "@vercel/static"
     },
     {
@@ -14,15 +13,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "dest": "/api/index.js"
     },
     {
       "src": "/(.*)",
-      "dest": "frontend/public/index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "frontend/public/styles.css"
+      "dest": "/frontend/$1"
     }
   ]
 }
