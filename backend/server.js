@@ -1,58 +1,52 @@
-  const express = require('express');
-  const mongoose = require('mongoose');
-  const cors = require('cors');
-  const http = require('http');
-  const socketIo = require('socket.io');
-  const fieldRoutes = require('./routes/fields');
-  const ideaRoutes = require('./routes/ideas');
-  
-  const app = express();
-  const server = http.createServer(app);
-  const io = socketIo(server);
-  
-  app.use(cors());
-  app.use(express.json());
-  app.use('/fields', fieldRoutes);
-  app.use('/ideas', ideaRoutes);
-  
-  const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kev2block:8g03QtRl4grvaHy9@ideaboard.vdip7wi.mongodb.net/?retryWrites=true&w=majority&appName=IdeaBoard';
-  const PORT = process.env.PORT || 3000;
-  
-  mongoose.connect(MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      useFindAndModify: false,
-      useCreateIndex: true
-  }).then(() => {
-      console.log('Connected to MongoDB');
-  }).catch(err => {
-      console.error('Error connecting to MongoDB', err);
-  });
-  
-  io.on('connection', (socket) => {
-      console.log('New client connected');
-  
-      socket.on('new-idea', (idea) => {
-          io.emit('new-idea', idea);
-      });
-  
-      socket.on('delete-idea', (id) => {
-          io.emit('delete-idea', id);
-      });
-  
-      socket.on('update-fields', (fields) => {
-          io.emit('update-fields', fields);
-      });
-  
-      socket.on('update-connections', (connections) => {
-          io.emit('update-connections', connections);
-      });
-  
-      socket.on('disconnect', () => {
-          console.log('Client disconnected');
-      });
-  });
-  
-  server.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-  });  
+const express = require('express');
+const mongoose = require('mongoose');
+const path = require('path');
+const socketIo = require('socket.io');
+const http = require('http');
+const cors = require('cors');
+require('dotenv').config();
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+const ideaRoutes = require('./routes/ideas');
+const fieldRoutes = require('./routes/fields');
+
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    useFindAndModify: false,
+    useCreateIndex: true
+})
+    .then(() => console.log('MongoDB connected...'))
+    .catch(err => console.log(err));
+
+app.use(express.json());
+app.use(cors());
+
+app.use('/api/ideas', ideaRoutes);
+app.use('/api/fields', fieldRoutes);
+
+// Serve static files from the frontend directory
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+io.on('connection', socket => {
+    console.log('New client connected');
+
+    socket.on('disconnect', () => {
+        console.log('Client disconnected');
+    });
+});
